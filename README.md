@@ -10,7 +10,7 @@ Tools & Services Used:
 7. Docker&Dockerhub
 
 
-***Explanation**
+**Explanation**
 After setting up the EC2 instance with Terraform open the ports 22,443,80,8080,9000.
 
 Using the Script Please install the below
