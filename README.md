@@ -73,6 +73,8 @@ Now, Navigate to Administration->Security->Users create a Token as per the below
 Then proceed for creating the Pipeline using the pipeline script available in the Repository
 
 
+**CICD PIPLINE EXPLANATION**
+
 
 **** What is a Webhook in SonarQube? ****
 
