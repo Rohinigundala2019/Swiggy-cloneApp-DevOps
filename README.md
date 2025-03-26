@@ -75,15 +75,103 @@ Then proceed for creating the Pipeline using the pipeline script available in th
 
 **CICD PIPLINE EXPLANATION**
 
+This Jenkins pipeline is designed for continuous integration and delivery (CI/CD) for an application named "Swiggy." It involves multiple stages for code quality analysis, dependency scanning, Docker build, vulnerability checks, and deployment. Here's a detailed breakdown of each stage in the pipeline:
 
-**** What is a Webhook in SonarQube? ****
+### 1. **Agent Declaration**
+   - `agent any`: This means the pipeline can run on any available agent or node. Jenkins will use any worker node that's free to execute the pipeline.
 
-A webhook in SonarQube is a way for the SonarQube server to notify external systems (like CI/CD pipelines, monitoring tools, or messaging services) when specific events occur in a project, such as:
+### 2. **Tools Declaration**
+   - `jdk 'jdk17'`: Declares the use of Java Development Kit (JDK) version 17 for the pipeline.
+   - `nodejs 'node23'`: Declares the use of Node.js version 23 for executing Node.js-related tasks (like `npm install`).
+   - **Environment Variable**: 
+     - `SCANNER_HOME=tool 'sonar-scanner'`: This sets up an environment variable `SCANNER_HOME` which points to the SonarQube Scanner installation directory.
 
-When an analysis is finished.
+### 3. **Stages**
+   The pipeline is divided into multiple stages, each performing a distinct task:
 
-When a Quality Gate status changes (e.g., Passed, Failed).
+---
 
-When a new issue is raised or an existing issue is updated.
+### 4. **Stage: `clean workspace`**
+   - This stage is used to clean the workspace before starting any new job. It ensures there are no leftover files from previous builds that might affect the current build.
+   - `cleanWs()`: Cleans the workspace (removes files from the previous builds).
 
-In essence, a webhook allows SonarQube to send a payload (data) to an external URL (such as a listener or a service) whenever certain events happen within SonarQube.
+---
+
+### 5. **Stage: `Checkout from Git`**
+   - This stage is responsible for fetching the source code from the Git repository where the project is stored.
+   - `git 'https://github.com/Rohinigundala2019/Swiggy-cloneApp-DevOps.git'`: This command clones the repository from GitHub. The pipeline fetches the latest version of the project to work with.
+
+---
+
+### 6. **Stage: `SonarQube Analysis`**
+   - This stage performs a static code analysis using **SonarQube** to check the quality of the code, identify bugs, vulnerabilities, and code smells.
+   - `withSonarQubeEnv('sonar-server')`: This command sets up the SonarQube environment using the server configuration provided in the Jenkins instance. It points to a configured SonarQube server.
+   - `sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Swiggy -Dsonar.projectKey=Swiggy '''`: This runs the SonarQube scanner on the code. It uses the `sonar-scanner` tool to analyze the project with the specified project name (`Swiggy`) and project key (`Swiggy`).
+
+---
+
+### 7. **Stage: `quality gate`**
+   - This stage waits for the result of the **SonarQube Quality Gate** to determine if the code meets the defined quality standards.
+   - `waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'`: The `waitForQualityGate` step checks the quality gate status from SonarQube. If the quality gate fails (i.e., the code does not meet quality standards), the pipeline can be configured to abort, but in this case, it's not set to abort automatically (`abortPipeline: false`).
+
+---
+
+### 8. **Stage: `Install Dependencies`**
+   - This stage installs the required dependencies for the Node.js application using `npm`.
+   - `sh "npm install"`: This runs the command `npm install`, which reads the `package.json` file and installs the necessary dependencies for the application to run.
+
+---
+
+### 9. **Stage: `OWASP Dependency-Check (FS Scan)`**
+   - This stage runs a **dependency check** to identify known vulnerabilities in the project’s dependencies (JavaScript, Node.js modules, etc.) using the **OWASP Dependency-Check** tool.
+   - `dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'`: This command scans the project directory (`--scan ./`) for dependencies and checks for vulnerabilities.
+     - The flags `--disableYarnAudit` and `--disableNodeAudit` are used to disable certain audit checks.
+   - `dependencyCheckPublisher pattern: '**/dependency-check-report.xml'`: After the scan, the generated report is published to Jenkins, where the results can be viewed.
+
+---
+
+### 10. **Stage: `TRIVY FS Scan`**
+   - This stage performs a **file system scan** for vulnerabilities using **Trivy**, a vulnerability scanner for containers and file systems.
+   - `sh "trivy fs . > trivyfs.txt"`: The `trivy fs` command scans the entire file system of the repository (`.` indicates the current directory), looking for vulnerabilities in files (such as dependencies and configurations). The results are saved in `trivyfs.txt`.
+
+---
+
+### 11. **Stage: `Docker Build & Push`**
+   - This stage builds a Docker image for the application and pushes it to a Docker registry (e.g., Docker Hub).
+   - `withDockerRegistry(credentialsId: 'docker-creds', toolName: 'docker')`: This step logs into Docker using the credentials stored in Jenkins (referenced by `docker-creds`).
+   - `sh "docker build -t swiggy ."`: This builds a Docker image from the current directory (`.`) and tags it as `swiggy`.
+   - `sh "docker tag swiggy rohinigundala2024/swiggy:latest"`: This tags the built image with the name `rohinigundala2024/swiggy:latest` for pushing to a Docker registry.
+   - `sh "docker push rohinigundala2024/swiggy:latest"`: This command pushes the tagged Docker image to Docker Hub under the repository `rohinigundala2024/swiggy`.
+
+---
+
+### 12. **Stage: `TRIVY Image Scan`**
+   - This stage scans the Docker image that was just built using **Trivy** for vulnerabilities.
+   - `sh "trivy image rohinigundala2024/swiggy:latest > trivy.txt"`: The `trivy image` command scans the Docker image `rohinigundala2024/swiggy:latest` for vulnerabilities and writes the results to `trivy.txt`.
+
+---
+
+### 13. **Stage: `Deploy to Container`**
+   - This final stage deploys the Docker container to run the application.
+   - `sh 'docker run -d --name swiggy -p 3000:3000 rohinigundala2024/swiggy:latest'`: This command runs the Docker container in detached mode (`-d`), names it `swiggy`, and maps port 3000 of the container to port 3000 of the host. This is typically used for web applications to expose the app on the specified port.
+
+---
+
+### Summary
+In summary, this pipeline performs:
+1. **Code checkout** from a Git repository.
+2. **SonarQube analysis** for static code quality checks.
+3. **Dependency scanning** (OWASP Dependency-Check and Trivy) to identify vulnerabilities in dependencies and the file system.
+4. **Docker build & push** to create and push a Docker image to Docker Hub.
+5. **Image vulnerability scanning** using Trivy to ensure the Docker image has no known vulnerabilities.
+6. **Deployment** of the Docker container to a running instance.
+
+This pipeline ensures the code is properly tested, secure, and deployed with proper quality gates and security checks at each step.
+
+
+**ACCESSING THE APPLICATION**
+
+Deployed theApplication using CICD pipline, Now able to Access the Application From Public IP Address
+
+<img width="874" alt="image" src="https://github.com/user-attachments/assets/634b7905-dbd1-44f6-871a-a50d21960d13" />
+
